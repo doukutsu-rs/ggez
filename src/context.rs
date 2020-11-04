@@ -1,16 +1,21 @@
+use std::borrow::Cow;
 use std::fmt;
+use std::path;
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 /// We re-export winit so it's easy for people to use the same version as we are
 /// without having to mess around figuring it out.
 pub use winit;
 
-use crate::audio;
 use crate::conf;
 use crate::error::GameResult;
 use crate::event::winit_event;
 use crate::filesystem::Filesystem;
-use crate::graphics::{self, Point2};
+use crate::graphics::{self, FilterMode, Point2};
 use crate::input::{gamepad, keyboard, mouse};
 use crate::timer;
+use glutin::platform::ContextTraitExt;
 
 /// A `Context` is an object that holds on to global resources.
 /// It basically tracks hardware state such as the screen, audio
@@ -42,8 +47,6 @@ pub struct Context {
     pub(crate) gfx_context: crate::graphics::context::GraphicsContext,
     /// Timer state
     pub timer_context: timer::TimeContext,
-    /// Audio context
-    pub audio_context: Box<dyn audio::AudioContext>,
     /// Keyboard context
     pub keyboard_context: keyboard::KeyboardContext,
     /// Mouse context
@@ -75,19 +78,13 @@ impl fmt::Debug for Context {
 impl Context {
     /// Tries to create a new Context using settings from the given [`Conf`](../conf/struct.Conf.html) object.
     /// Usually called by [`ContextBuilder::build()`](struct.ContextBuilder.html#method.build).
-    fn from_conf(conf: conf::Conf, mut fs: Filesystem) -> GameResult<(Context, winit::EventsLoop)> {
+    fn from_conf(conf: conf::Conf, events_loop: &winit::event_loop::EventLoopWindowTarget<()>, mut fs: Filesystem) -> GameResult<Context> {
         let debug_id = DebugId::new();
-        let audio_context: Box<dyn audio::AudioContext> = if conf.modules.audio {
-            Box::new(audio::RodioAudioContext::new()?)
-        } else {
-            Box::new(audio::NullAudioContext::default())
-        };
-        let events_loop = winit::EventsLoop::new();
         let timer_context = timer::TimeContext::new();
         let backend_spec = graphics::GlBackendSpec::from(conf.backend);
         let graphics_context = graphics::context::GraphicsContext::new(
             &mut fs,
-            &events_loop,
+            events_loop,
             &conf.window_setup,
             conf.window_mode,
             backend_spec,
@@ -96,7 +93,12 @@ impl Context {
         let mouse_context = mouse::MouseContext::new();
         let keyboard_context = keyboard::KeyboardContext::new();
         let gamepad_context: Box<dyn gamepad::GamepadContext> = if conf.modules.gamepad {
-            Box::new(gamepad::GilrsGamepadContext::new()?)
+            let gp: Box<dyn gamepad::GamepadContext> = if let Ok(ctx) = gamepad::GilrsGamepadContext::new() {
+                Box::new(ctx)
+            } else {
+                Box::new(gamepad::NullGamepadContext::default())
+            };
+            gp
         } else {
             Box::new(gamepad::NullGamepadContext::default())
         };
@@ -107,7 +109,6 @@ impl Context {
             gfx_context: graphics_context,
             continuing: true,
             timer_context,
-            audio_context,
             keyboard_context,
             gamepad_context,
             mouse_context,
@@ -115,7 +116,7 @@ impl Context {
             debug_id,
         };
 
-        Ok((ctx, events_loop))
+        Ok(ctx)
     }
 
     // TODO LATER: This should be a function in `ggez::event`, per the
@@ -125,14 +126,11 @@ impl Context {
     /// state it needs to, such as detecting window resizes.  If you are
     /// rolling your own event loop, you should call this on the events
     /// you receive before processing them yourself.
-    pub fn process_event(&mut self, event: &winit::Event) {
-        match event.clone() {
+    pub fn process_event<'a>(&mut self, event: &winit::event::Event<'a, ()>) {
+        match event {
             winit_event::Event::WindowEvent { event, .. } => match event {
-                winit_event::WindowEvent::Resized(logical_size) => {
-                    let hidpi_factor = self.gfx_context.window.get_hidpi_factor();
-                    let physical_size = logical_size.to_physical(hidpi_factor as f64);
-                    self.gfx_context.window.resize(physical_size);
-                    self.gfx_context.resize_viewport();
+                winit_event::WindowEvent::Resized(physical_size) => {
+                    self.gfx_context.window.resize(*physical_size);
                 }
                 winit_event::WindowEvent::CursorMoved {
                     position: logical_position,
@@ -148,16 +146,16 @@ impl Context {
                         winit_event::ElementState::Pressed => true,
                         winit_event::ElementState::Released => false,
                     };
-                    self.mouse_context.set_button(button, pressed);
+                    self.mouse_context.set_button(*button, pressed);
                 }
                 winit_event::WindowEvent::KeyboardInput {
                     input:
-                        winit::KeyboardInput {
-                            state,
-                            virtual_keycode: Some(keycode),
-                            modifiers,
-                            ..
-                        },
+                    winit::event::KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        modifiers,
+                        ..
+                    },
                     ..
                 } => {
                     let pressed = match state {
@@ -165,50 +163,39 @@ impl Context {
                         winit_event::ElementState::Released => false,
                     };
                     self.keyboard_context
-                        .set_modifiers(keyboard::KeyMods::from(modifiers));
-                    self.keyboard_context.set_key(keycode, pressed);
-                }
-                winit_event::WindowEvent::HiDpiFactorChanged(_) => {
-                    // Nope.
+                        .set_modifiers(keyboard::KeyMods::from(*modifiers));
+                    self.keyboard_context.set_key(*keycode, pressed);
                 }
                 _ => (),
             },
             winit_event::Event::DeviceEvent { event, .. } => {
                 if let winit_event::DeviceEvent::MouseMotion { delta: (x, y) } = event {
                     self.mouse_context
-                        .set_last_delta(Point2::new(x as f32, y as f32));
+                        .set_last_delta(Point2::new(*x as f32, *y as f32));
                 }
             }
-
             _ => (),
         };
     }
 }
 
-use std::borrow::Cow;
-use std::path;
-
 /// A builder object for creating a [`Context`](struct.Context.html).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ContextBuilder {
     pub(crate) game_id: String,
-    pub(crate) author: String,
     pub(crate) conf: conf::Conf,
     pub(crate) paths: Vec<path::PathBuf>,
     pub(crate) memory_zip_files: Vec<Cow<'static, [u8]>>,
-    pub(crate) load_conf_file: bool,
 }
 
 impl ContextBuilder {
     /// Create a new `ContextBuilder` with default settings.
-    pub fn new(game_id: &str, author: &str) -> Self {
+    pub fn new(game_id: &str) -> Self {
         Self {
             game_id: game_id.to_string(),
-            author: author.to_string(),
             conf: conf::Conf::default(),
             paths: vec![],
             memory_zip_files: vec![],
-            load_conf_file: true,
         }
     }
 
@@ -248,65 +235,25 @@ impl ContextBuilder {
     /// Add a new read-only filesystem path to the places to search
     /// for resources.
     pub fn add_resource_path<T>(mut self, path: T) -> Self
-    where
-        T: Into<path::PathBuf>,
+        where
+            T: Into<path::PathBuf>,
     {
         self.paths.push(path.into());
         self
     }
 
-    /// Add a new zip file from bytes whose contents will be searched
-    /// for resources. The zip file will be stored in-memory.
-    /// You can pass it a static slice, a `Vec` of bytes, etc.
-    ///
-    /// ```ignore
-    /// use ggez::context::ContextBuilder;
-    /// let _ = ContextBuilder::new()
-    ///     .add_zipfile_bytes(include_bytes!("../resources.zip").to_vec())
-    ///     .build();
-    /// ```
-    pub fn add_zipfile_bytes<B>(mut self, bytes: B) -> Self
-    where
-        B: Into<Cow<'static, [u8]>>,
-    {
-        let cow = bytes.into();
-        self.memory_zip_files.push(cow);
-        self
-    }
-
-    /// Specifies whether or not to load the `conf.toml` file if it
-    /// exists and use its settings to override the provided values.
-    /// Defaults to `true` which is usually what you want, but being
-    /// able to fiddle with it is sometimes useful for debugging.
-    pub fn with_conf_file(mut self, load_conf_file: bool) -> Self {
-        self.load_conf_file = load_conf_file;
-        self
-    }
-
     /// Build the `Context`.
-    pub fn build(self) -> GameResult<(Context, winit::EventsLoop)> {
-        let mut fs = Filesystem::new(self.game_id.as_ref(), self.author.as_ref())?;
+    pub fn build(mut self, event_loop: &winit::event_loop::EventLoopWindowTarget<()>) -> GameResult<Context> {
+        let mut fs = Filesystem::new(self.game_id.as_ref())?;
 
         for path in &self.paths {
             fs.mount(path, true);
         }
 
-        for zipfile_bytes in self.memory_zip_files {
-            fs.add_zip_file(std::io::Cursor::new(zipfile_bytes))?;
-        }
-
-        let config = if self.load_conf_file {
-            fs.read_config().unwrap_or(self.conf)
-        } else {
-            self.conf
-        };
-
-        Context::from_conf(config, fs)
+        Context::from_conf(self.conf, event_loop, fs)
     }
 }
 
-#[cfg(debug_assertions)]
-use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(debug_assertions)]
 static DEBUG_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -319,6 +266,7 @@ static DEBUG_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg(debug_assertions)]
 pub(crate) struct DebugId(u32);
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg(not(debug_assertions))]
 pub(crate) struct DebugId;

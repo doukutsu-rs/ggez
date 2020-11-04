@@ -47,6 +47,17 @@ impl Canvas {
         height: u16,
         samples: conf::NumSamples,
     ) -> GameResult<Canvas> {
+        Canvas::new_format(ctx, width, height, samples, ctx.gfx_context.color_format())
+    }
+
+    /// Create a new `Canvas` with the given size, number of samples and specified format.
+    pub fn new_format(
+        ctx: &mut Context,
+        width: u16,
+        height: u16,
+        samples: conf::NumSamples,
+        color_format: gfx::format::Format,
+    ) -> GameResult<Canvas> {
         let debug_id = DebugId::get(ctx);
         let aa = match samples {
             conf::NumSamples::One => AaMode::Single,

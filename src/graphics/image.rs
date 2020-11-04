@@ -241,7 +241,7 @@ impl Image {
     ) -> GameResult {
         use std::io;
         let data = self.to_rgba8(ctx)?;
-        let f = filesystem::create(ctx, path)?;
+        let f = filesystem::user_create(ctx, path)?;
         let writer = &mut io::BufWriter::new(f);
         let color_format = image::ColorType::RGBA(8);
         match format {
@@ -376,18 +376,5 @@ impl Drawable for Image {
 
     fn blend_mode(&self) -> Option<BlendMode> {
         self.blend_mode
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ContextBuilder;
-    #[test]
-    fn test_invalid_image_size() {
-        let (ctx, _) = &mut ContextBuilder::new("unittest", "unittest").build().unwrap();
-        let _i = assert!(Image::from_rgba8(ctx, 0, 0, &vec![]).is_err());
-        let _i = assert!(Image::from_rgba8(ctx, 3432, 432, &vec![]).is_err());
-        let _i = Image::from_rgba8(ctx, 2, 2, &vec![99; 16]).unwrap();
     }
 }

@@ -1,20 +1,11 @@
 //! Error types and conversion functions.
 
-use std;
+
 use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
-
-use gfx;
-use glutin;
-use winit;
-
-use gilrs;
-use image;
-use lyon;
-use rodio::decoder::DecoderError;
-use toml;
-use zip;
+use std::string::FromUtf8Error;
+use std::sync::{Arc, PoisonError};
+use std::sync::mpsc::SendError;
 
 /// An enum containing all kinds of game framework errors.
 #[derive(Debug, Clone)]
@@ -50,6 +41,10 @@ pub enum GameError {
     GamepadError(String),
     /// Something went wrong with the `lyon` shape-tesselation library.
     LyonError(String),
+    /// Something went wrong while parsing something.
+    ParseError(String),
+    /// Something went wrong while converting a value.
+    InvalidValue(String),
 }
 
 impl fmt::Display for GameError {
@@ -88,35 +83,6 @@ impl From<std::io::Error> for GameError {
     }
 }
 
-impl From<toml::de::Error> for GameError {
-    fn from(e: toml::de::Error) -> GameError {
-        let errstr = format!("TOML decode error: {}", e);
-
-        GameError::ConfigError(errstr)
-    }
-}
-
-impl From<toml::ser::Error> for GameError {
-    fn from(e: toml::ser::Error) -> GameError {
-        let errstr = format!("TOML error (possibly encoding?): {}", e);
-        GameError::ConfigError(errstr)
-    }
-}
-
-impl From<zip::result::ZipError> for GameError {
-    fn from(e: zip::result::ZipError) -> GameError {
-        let errstr = format!("Zip error: {}", e);
-        GameError::ResourceLoadError(errstr)
-    }
-}
-
-impl From<DecoderError> for GameError {
-    fn from(e: DecoderError) -> GameError {
-        let errstr = format!("Audio decoder error: {:?}", e);
-        GameError::AudioError(errstr)
-    }
-}
-
 impl From<image::ImageError> for GameError {
     fn from(e: image::ImageError) -> GameError {
         let errstr = format!("Image load error: {}", e);
@@ -143,10 +109,17 @@ impl From<gfx::mapping::Error> for GameError {
     }
 }
 
+impl From<std::string::FromUtf8Error> for GameError {
+    fn from(e: FromUtf8Error) -> Self {
+        let errstr = format!("UTF-8 decoding error: {:?}", e);
+        GameError::ConfigError(errstr)
+    }
+}
+
 impl<S, D> From<gfx::CopyError<S, D>> for GameError
-where
-    S: fmt::Debug,
-    D: fmt::Debug,
+    where
+        S: fmt::Debug,
+        D: fmt::Debug,
 {
     fn from(e: gfx::CopyError<S, D>) -> GameError {
         let errstr = format!("Memory copy error: {:?}", e);
@@ -180,8 +153,8 @@ impl From<gfx::TargetViewError> for GameError {
 }
 
 impl<T> From<gfx::UpdateError<T>> for GameError
-where
-    T: fmt::Debug + fmt::Display + 'static,
+    where
+        T: fmt::Debug + fmt::Display + 'static,
 {
     fn from(e: gfx::UpdateError<T>) -> GameError {
         let errstr = format!("Buffer update error: {}", e);
@@ -195,8 +168,8 @@ impl From<gfx::shade::ProgramError> for GameError {
     }
 }
 
-impl From<winit::EventsLoopClosed> for GameError {
-    fn from(_: glutin::EventsLoopClosed) -> GameError {
+impl<T> From<winit::event_loop::EventLoopClosed<T>> for GameError {
+    fn from(_: winit::event_loop::EventLoopClosed<T>) -> GameError {
         let e = "An event loop proxy attempted to wake up an event loop that no longer exists."
             .to_owned();
         GameError::EventLoopError(e)
@@ -222,6 +195,13 @@ impl From<gilrs::Error> for GameError {
     }
 }
 
+#[cfg(target_os = "android")]
+impl From<jni::errors::Error> for GameError {
+    fn from(e: jni::errors::Error) -> GameError {
+        GameError::WindowError(e.to_string())
+    }
+}
+
 impl From<lyon::lyon_tessellation::TessellationError> for GameError {
     fn from(s: lyon::lyon_tessellation::TessellationError) -> GameError {
         let errstr = format!(
@@ -239,5 +219,47 @@ impl From<lyon::lyon_tessellation::geometry_builder::GeometryBuilderError> for G
             s
         );
         GameError::LyonError(errstr)
+    }
+}
+
+impl From<strum::ParseError> for GameError {
+    fn from(s: strum::ParseError) -> GameError {
+        let errstr = format!("Strum parse error: {}", s);
+        GameError::ParseError(errstr)
+    }
+}
+
+impl From<cpal::DefaultStreamConfigError> for GameError {
+    fn from(s: cpal::DefaultStreamConfigError) -> GameError {
+        let errstr = format!("Default stream config error: {}", s);
+        GameError::AudioError(errstr)
+    }
+}
+
+impl From<cpal::PlayStreamError> for GameError {
+    fn from(s: cpal::PlayStreamError) -> GameError {
+        let errstr = format!("Play stream error: {}", s);
+        GameError::AudioError(errstr)
+    }
+}
+
+impl From<cpal::BuildStreamError> for GameError {
+    fn from(s: cpal::BuildStreamError) -> GameError {
+        let errstr = format!("Build stream error: {}", s);
+        GameError::AudioError(errstr)
+    }
+}
+
+impl<T> From<PoisonError<T>> for GameError {
+    fn from(s: PoisonError<T>) -> GameError {
+        let errstr = format!("Poison error: {}", s);
+        GameError::EventLoopError(errstr)
+    }
+}
+
+impl<T> From<SendError<T>> for GameError {
+    fn from(s: SendError<T>) -> GameError {
+        let errstr = format!("Send error: {}", s);
+        GameError::EventLoopError(errstr)
     }
 }

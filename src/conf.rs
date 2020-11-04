@@ -13,8 +13,8 @@
 //! passed to the [`ContextBuilder`](../struct.ContextBuilder.html).
 
 use std::io;
-use toml;
 
+use serde::{Serialize, Deserialize};
 use crate::error::GameResult;
 
 /// Possible fullscreen modes.
@@ -168,7 +168,7 @@ pub struct WindowSetup {
     pub icon: String,
     /// Whether or not to enable sRGB (gamma corrected color)
     /// handling on the display.
-    #[default = true]
+    #[default = false]
     pub srgb: bool,
 }
 
@@ -396,23 +396,6 @@ impl Conf {
         Self::default()
     }
 
-    /// Load a TOML file from the given `Read` and attempts to parse
-    /// a `Conf` from it.
-    pub fn from_toml_file<R: io::Read>(file: &mut R) -> GameResult<Conf> {
-        let mut s = String::new();
-        let _ = file.read_to_string(&mut s)?;
-        let decoded = toml::from_str(&s)?;
-        Ok(decoded)
-    }
-
-    /// Saves the `Conf` to the given `Write` object,
-    /// formatted as TOML.
-    pub fn to_toml_file<W: io::Write>(&self, file: &mut W) -> GameResult {
-        let s = toml::to_vec(self)?;
-        file.write_all(&s)?;
-        Ok(())
-    }
-
     /// Sets the window mode
     pub fn window_mode(mut self, window_mode: WindowMode) -> Self {
         self.window_mode = window_mode;
@@ -429,22 +412,5 @@ impl Conf {
     pub fn modules(mut self, modules: ModuleConf) -> Self {
         self.modules = modules;
         self
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::conf;
-
-    /// Tries to encode and decode a `Conf` object
-    /// and makes sure it gets the same result it had.
-    #[test]
-    fn headless_encode_round_trip() {
-        let c1 = conf::Conf::new();
-        let mut writer = Vec::new();
-        let _c = c1.to_toml_file(&mut writer).unwrap();
-        let mut reader = writer.as_slice();
-        let c2 = conf::Conf::from_toml_file(&mut reader).unwrap();
-        assert_eq!(c1, c2);
     }
 }

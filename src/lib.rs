@@ -79,6 +79,7 @@
 //!
 //! ```
 
+#![allow(dead_code)]
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![deny(unused_results)]
@@ -93,16 +94,15 @@ extern crate bitflags;
 #[macro_use]
 extern crate gfx;
 #[macro_use]
-extern crate log;
-#[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate smart_default;
+#[macro_use]
+extern crate log;
 
 pub extern crate mint;
 pub extern crate nalgebra;
 
-pub mod audio;
 pub mod conf;
 mod context;
 pub mod error;
@@ -111,10 +111,7 @@ pub mod filesystem;
 pub mod graphics;
 pub mod input;
 pub mod timer;
-mod vfs;
-
-#[cfg(test)]
-pub mod tests;
+pub mod vfs;
 
 pub use crate::context::{Context, ContextBuilder};
 pub use crate::error::*;

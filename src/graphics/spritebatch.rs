@@ -108,7 +108,7 @@ impl SpriteBatch {
                 new_param.scale = real_scale.into();
                 new_param.color = new_param.color;
                 let primitive_param = graphics::DrawTransform::from(new_param);
-                primitive_param.to_instance_properties(ctx.gfx_context.is_srgb())
+                primitive_param.to_instance_properties()
             })
             .collect::<Vec<_>>();
 
@@ -155,6 +155,10 @@ impl SpriteBatch {
 
 impl graphics::Drawable for SpriteBatch {
     fn draw(&self, ctx: &mut Context, param: DrawParam) -> GameResult {
+        if self.sprites.is_empty() {
+            return Ok(());
+        }
+
         // Awkwardly we must update values on all sprites and such.
         // Also awkwardly we have this chain of colors with differing priorities.
         self.flush(ctx, &self.image)?;
