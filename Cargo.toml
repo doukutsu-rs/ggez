@@ -47,7 +47,7 @@ strum = "0.18.0"
 nalgebra = {version = "0.21", features = ["mint"]}
 # Has to be the same version of mint that our math lib uses here.
 mint = "0.5"
-gilrs = "0.7"
+gilrs = "0.8"
 approx = "0.3"
 
 [dev-dependencies]
