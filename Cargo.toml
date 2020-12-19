@@ -64,5 +64,5 @@ skeptic = "0.13"
 ndk = "0.2.0"
 ndk-glue = "0.2.0"
 jni = "0.17"
-#glutin_egl_sys = {git = "https://github.com/doukutsu-rs/glutin.git", branch = "android-support"}
-glutin_egl_sys = {path = "../glutin/glutin_egl_sys"}
+glutin_egl_sys = {git = "https://github.com/doukutsu-rs/glutin.git", branch = "master"}
+#glutin_egl_sys = {path = "../glutin/glutin_egl_sys"}
