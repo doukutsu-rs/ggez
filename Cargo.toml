@@ -34,9 +34,8 @@ directories = "3"
 gfx = "0.18"
 gfx_core = "0.9"
 gfx_device_gl = {git = "https://github.com/doukutsu-rs/gfx.git", branch = "pre-ll"}
-glyph_brush = "0.6"
-glutin = {git = "https://github.com/doukutsu-rs/glutin.git", branch = "android-support"}
-winit = "0.23.0"
+glutin = {git = "https://github.com/doukutsu-rs/glutin.git", branch = "master"}
+winit = "0.24.0"
 image = { version = "0.22", default-features = false, features = ["png_codec", "pnm", "bmp"] }
 serde = "1"
 serde_derive = "1"
@@ -61,3 +60,9 @@ skeptic = "0.13"
 [build-dependencies]
 skeptic = "0.13"
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = "0.2.0"
+ndk-glue = "0.2.0"
+jni = "0.17"
+#glutin_egl_sys = {git = "https://github.com/doukutsu-rs/glutin.git", branch = "android-support"}
+glutin_egl_sys = {path = "../glutin/glutin_egl_sys"}

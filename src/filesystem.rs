@@ -31,12 +31,14 @@ use std::fmt;
 use std::io;
 use std::io::SeekFrom;
 use std::path;
+use std::path::PathBuf;
+
+use directories::ProjectDirs;
 
 use crate::{Context, GameError, GameResult};
 use crate::conf;
 use crate::vfs::{self, VFS};
 pub use crate::vfs::OpenOptions;
-use directories::ProjectDirs;
 
 const CONFIG_NAME: &str = "/conf.toml";
 
@@ -116,12 +118,13 @@ impl Filesystem {
         // User data VFS.
         let mut user_overlay = vfs::OverlayFS::new();
 
-        let user_data_path;
+        let user_data_path: PathBuf;
         //let user_config_path;
         // let mut resources_path;
         // let mut resources_zip_path;
 
-        let project_dirs = match ProjectDirs::from("", "", id) {
+        #[cfg(not(target_os = "android"))]
+            let project_dirs = match ProjectDirs::from("", "", id) {
             Some(dirs) => dirs,
             None => {
                 return Err(GameError::FilesystemError(String::from(
@@ -156,7 +159,13 @@ impl Filesystem {
         // Per-user data dir,
         // ~/.local/share/whatever/
         {
-            user_data_path = project_dirs.data_local_dir();
+            user_data_path = {
+                #[cfg(not(target_os = "android"))]
+                    { project_dirs.data_local_dir().to_path_buf() }
+
+                #[cfg(target_os = "android")]
+                    { PathBuf::from(ndk_glue::native_activity().internal_data_path().to_string_lossy().to_string()) }
+            };
             log::trace!("User-local data path: {:?}", user_data_path);
             let physfs = vfs::PhysicalFS::new(&user_data_path, false);
             user_overlay.push_back(Box::new(physfs));
@@ -175,7 +184,7 @@ impl Filesystem {
             vfs: overlay,
             user_vfs: user_overlay,
             //user_config_path: user_config_path.to_path_buf(),
-            user_data_path: user_data_path.to_path_buf(),
+            user_data_path,
         };
 
         Ok(fs)
@@ -511,7 +520,7 @@ mod tests {
             vfs: ofs,
             user_vfs: user_ofs,
             //user_config_path: path,
-            user_data_path: path
+            user_data_path: path,
         }
     }
 

@@ -126,6 +126,16 @@ impl GraphicsContextGeneric<GlBackendSpec> {
             depth_format,
         )?;
 
+        #[allow(unsafe_code)] // fuck off
+        #[cfg(target_os = "android")]
+        unsafe {
+            use glutin::platform::ContextTraitExt;
+
+            let window_handle = ndk_glue::native_window().as_ref().unwrap().ptr().as_ptr() as glutin_egl_sys::EGLNativeWindowType;
+            window.context().surface_destroyed();
+            window.context().surface_created(window_handle);
+        }
+
         // see winit #548 about DPI.
         // We basically ignore it and if it's wrong, that's a winit bug
         // since we have no good control over it.
